@@ -1,0 +1,65 @@
+pipeline {
+    agent any
+    environment {
+        DOCKER_IMAGE = "silvia2025/delivery-ms"
+        KUBE_CONFIG = "/home/ubuntu/.kube/config"
+        AWS_REGION = "eu-west-1"
+        EKS_CLUSTER_NAME = "delivery-cluster"
+        
+    }
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/hisilvia/delivery-ms.git'
+            }
+        }
+        stage('Build & Test') {
+            tools {
+                 maven "mvn"
+            }
+            steps {
+                sh 'mvn clean install -DskipTests'
+            }
+        }
+        stage('Docker Build & Push') {
+            steps {
+                script {
+                    // Ensure Docker BuildKit is enabled
+                    env.DOCKER_BUILDKIT = '1'
+
+                    // Build Docker image
+                    sh 'docker build -t $DOCKER_IMAGE:latest .'
+
+                    // Login to DockerHub
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASSW')]) {
+                        sh 'docker login -u $DOCKER_USER -p $DOCKER_PASS'
+                    }
+
+                    // Push the Docker image to DockerHub
+                    sh 'docker push $DOCKER_IMAGE:latest'
+                }
+            }
+        }
+        stage('Deploy to EKS') {
+    steps {
+        script {
+            withCredentials([
+                        string(credentialsId: 'access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'secret-key-id', variable: 'AWS_SECRET_ACCESS_KEY')
+                        ]) {
+                sh """
+                    # Configure kubectl for EKS
+                    aws eks update-kubeconfig \
+                      --region ${AWS_REGION} \
+                      --name ${EKS_CLUSTER_NAME}
+
+                    # Apply manifests
+                    kubectl apply -f k8s-manifests/deployment.yaml
+                    kubectl apply -f k8s-manifests/service.yaml
+                """
+            }
+        }
+    }
+}
+    }
+}
