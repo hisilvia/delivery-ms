@@ -1,0 +1,21 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: delivery-ms
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: delivery-ms
+  template:
+    metadata:
+      labels:
+        app: delivery-ms
+    spec:
+      containers:
+      - name: delivery-ms
+        image: silvia2025/delivery-ms:latest
+        ports:
+        - containerPort: 8082
